@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Public Transport Enabler Planner UI</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0b1020; color: #e5e7eb; }
+      .app { display: grid; grid-template-columns: 400px 1fr; min-height: 100vh; }
+      .panel { padding: 16px; border-right: 1px solid #1f2937; background: #111827; overflow: auto; }
+      h1 { margin: 0 0 10px; font-size: 20px; }
+      .sub { margin: 0 0 12px; color: #9ca3af; font-size: 13px; }
+      form { display: grid; gap: 10px; margin-bottom: 12px; }
+      input, select, button { width: 100%; border: 1px solid #374151; background: #111827; color: #f9fafb; border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+      button { background: #2563eb; border-color: #1d4ed8; cursor: pointer; font-weight: 600; }
+      .hint { color: #93c5fd; font-size: 12px; min-height: 16px; }
+      .small { font-size: 12px; color: #9ca3af; }
+      .settings { border: 1px solid #1f2937; border-radius: 10px; padding: 10px; background: #0f172a; display: grid; gap: 8px; }
+      .settings-title { font-size: 12px; color: #93c5fd; font-weight: 700; }
+      .row-inline { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #cbd5e1; }
+      .input-wrap { position: relative; }
+      .suggestions { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 50; max-height: 220px; overflow: auto; background: #0b1220; border: 1px solid #1f2937; border-radius: 10px; display: none; }
+      .suggestions.show { display: block; }
+      .suggestion-item { width: 100%; text-align: left; border: 0; border-bottom: 1px solid #1f2937; background: transparent; color: #f9fafb; padding: 9px 10px; cursor: pointer; font-size: 13px; }
+      .suggestion-item:last-child { border-bottom: 0; }
+      .suggestion-item:hover { background: #1f2937; }
+      .connections { display: grid; gap: 8px; }
+      .conn { border: 1px solid #1f2937; border-radius: 12px; padding: 9px 10px; background: #0b1220; cursor: pointer; }
+      .conn.active { border-color: #2563eb; box-shadow: 0 0 0 1px #1d4ed8 inset; }
+      .conn-row { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+      .times { font-size: 13px; color: #e5e7eb; }
+      .price { font-size: 13px; font-weight: 700; color: #86efac; }
+      .line-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
+      .line-badge { font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 999px; color: #fff; }
+      .mode-train { background: #1d4ed8; }
+      .mode-bus { background: #b45309; }
+      .mode-tram { background: #be123c; }
+      .mode-subway { background: #7c3aed; }
+      .mode-ferry { background: #0e7490; }
+      .mode-walking { background: #4b5563; }
+      .mode-other { background: #374151; }
+      .discount { margin-top: 5px; font-size: 11px; color: #a7f3d0; }
+      .split { margin-top: 5px; font-size: 11px; color: #fde68a; }
+      .details { margin-top: 8px; border-top: 1px dashed #374151; padding-top: 8px; display: none; font-size: 12px; color: #cbd5e1; }
+      .conn.active .details { display: block; }
+      #map { width: 100%; height: 100vh; }
+      .note { position: absolute; top: 12px; right: 12px; z-index: 500; background: rgba(17,24,39,0.92); border: 1px solid #1f2937; border-radius: 10px; padding: 10px 12px; max-width: 360px; font-size: 12px; line-height: 1.45; }
+      .note a { color: #93c5fd; text-decoration: none; }
+      @media (max-width: 1000px) {
+        .app { grid-template-columns: 1fr; }
+        .panel { border-right: 0; border-bottom: 1px solid #1f2937; }
+        #map { height: 55vh; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <section class="panel">
+        <h1>Routenplaner UI</h1>
+        <p class="sub">Separate Oberfläche für die public-transport-enabler Web API.</p>
+        <form id="planner-form">
+          <label>API Base URL
+            <input id="apiBaseUrl" placeholder="z.B. http://159.89.107.127:8080" />
+          </label>
+          <label>Provider
+            <select id="provider"></select>
+          </label>
+          <label>Start
+            <div class="input-wrap">
+              <input id="from" autocomplete="off" placeholder="z.B. Berlin Hbf" required />
+              <div id="fromSuggestions" class="suggestions"></div>
+            </div>
+          </label>
+          <label>Ziel
+            <div class="input-wrap">
+              <input id="to" autocomplete="off" placeholder="z.B. Hamburg Hbf" required />
+              <div id="toSuggestions" class="suggestions"></div>
+            </div>
+          </label>
+          <label>Abfahrt (optional)
+            <input id="departureTime" type="datetime-local" />
+          </label>
+          <div class="settings">
+            <div class="settings-title">Tarifprofil</div>
+            <label class="row-inline"><input id="deutschlandTicket" type="checkbox" style="width:auto" />Deutschlandticket</label>
+            <label class="row-inline"><input id="deutschlandTicketOnly" type="checkbox" style="width:auto" />Nur D-Ticket-Verbindungen</label>
+            <label>BahnCard
+              <select id="bahnCard">
+                <option value="none">Keine</option>
+                <option value="25">BahnCard 25</option>
+                <option value="50">BahnCard 50</option>
+                <option value="100">BahnCard 100</option>
+              </select>
+            </label>
+            <label>Mitreisende (max. 8)
+              <input id="travellerCount" type="number" min="1" max="8" value="1" />
+            </label>
+            <label>Alter je Person (Komma getrennt)
+              <input id="travellerAges" placeholder="z.B. 30,28" />
+            </label>
+            <div class="small" id="dticketHint"></div>
+          </div>
+          <button type="submit">Verbindungen suchen</button>
+          <div class="hint" id="hint"></div>
+        </form>
+        <div class="small" id="meta"></div>
+        <div class="connections" id="connections"></div>
+      </section>
+      <section style="position:relative">
+        <div id="map"></div>
+        <div class="note" id="note"></div>
+      </section>
+    </div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+      const apiBaseUrlEl = document.getElementById("apiBaseUrl");
+      const providerEl = document.getElementById("provider");
+      const fromEl = document.getElementById("from");
+      const toEl = document.getElementById("to");
+      const fromSuggestionsEl = document.getElementById("fromSuggestions");
+      const toSuggestionsEl = document.getElementById("toSuggestions");
+      const departureEl = document.getElementById("departureTime");
+      const deutschlandTicketEl = document.getElementById("deutschlandTicket");
+      const deutschlandTicketOnlyEl = document.getElementById("deutschlandTicketOnly");
+      const bahnCardEl = document.getElementById("bahnCard");
+      const travellerCountEl = document.getElementById("travellerCount");
+      const travellerAgesEl = document.getElementById("travellerAges");
+      const dticketHintEl = document.getElementById("dticketHint");
+      const hintEl = document.getElementById("hint");
+      const metaEl = document.getElementById("meta");
+      const connectionsEl = document.getElementById("connections");
+      const noteEl = document.getElementById("note");
+      const formEl = document.getElementById("planner-form");
+
+      const stationMaps = { from: new Map(), to: new Map() };
+      const selectedStationIds = { from: null, to: null };
+      let providersByKey = {};
+      let journeys = [];
+      let activeJourneyId = null;
+
+      const map = L.map("map");
+      const markersLayer = L.layerGroup().addTo(map);
+      const routeLayer = L.layerGroup().addTo(map);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
+      map.setView([52.52, 13.405], 7);
+
+      const getApiBase = () => {
+        const raw = apiBaseUrlEl.value.trim();
+        return raw ? raw.replace(/\/+$/, "") : window.location.origin;
+      };
+      const apiUrl = (path) => getApiBase() + path;
+
+      const euro = (price) => {
+        if (!price || typeof price.amount !== "number") return "Preis n/v";
+        return new Intl.NumberFormat("de-DE", { style: "currency", currency: price.currency || "EUR" }).format(price.amount);
+      };
+      const fmt = (iso) => {
+        if (!iso) return "n/v";
+        return new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+      };
+      const modeClass = (mode) => {
+        const m = String(mode || "").toLowerCase();
+        if (m.includes("train") || m.includes("regional") || m.includes("national") || m.includes("intercity")) return "mode-train";
+        if (m.includes("bus")) return "mode-bus";
+        if (m.includes("tram")) return "mode-tram";
+        if (m.includes("subway") || m.includes("metro")) return "mode-subway";
+        if (m.includes("ferry") || m.includes("ship")) return "mode-ferry";
+        if (m.includes("walking")) return "mode-walking";
+        return "mode-other";
+      };
+      const closeSuggestions = (box) => box.classList.remove("show");
+      const toIso = (value) => {
+        if (!value) return undefined;
+        const d = new Date(value);
+        return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+      };
+      const setDeutschlandticketAvailability = () => {
+        const provider = providersByKey[providerEl.value];
+        const enabled = Boolean(provider?.supportsDeutschlandticket);
+        deutschlandTicketEl.disabled = !enabled;
+        deutschlandTicketOnlyEl.disabled = !enabled;
+        if (!enabled) {
+          deutschlandTicketEl.checked = false;
+          deutschlandTicketOnlyEl.checked = false;
+          dticketHintEl.textContent = "Deutschlandticket nur bei deutschen Providern (DB) aktiv.";
+        } else {
+          dticketHintEl.textContent = "";
+        }
+      };
+
+      const drawJourney = (journey) => {
+        markersLayer.clearLayers();
+        routeLayer.clearLayers();
+        if (!journey) return;
+        if (journey.from?.latitude && journey.from?.longitude) {
+          L.marker([journey.from.latitude, journey.from.longitude]).addTo(markersLayer).bindPopup("Start: " + (journey.from.name || ""));
+        }
+        if (journey.to?.latitude && journey.to?.longitude) {
+          L.marker([journey.to.latitude, journey.to.longitude]).addTo(markersLayer).bindPopup("Ziel: " + (journey.to.name || ""));
+        }
+        const coords = Array.isArray(journey.routeCoordinates) ? journey.routeCoordinates : [];
+        if (coords.length > 1) {
+          L.polyline(coords.map((c) => [c[0], c[1]]), { color: "#60a5fa", weight: 5, opacity: 0.85 }).addTo(routeLayer);
+          map.fitBounds(L.latLngBounds(coords.map((c) => [c[0], c[1]])), { padding: [24, 24] });
+        }
+      };
+
+      const renderCards = () => {
+        connectionsEl.innerHTML = "";
+        if (!journeys.length) {
+          connectionsEl.innerHTML = "<div class='small'>Keine Verbindungen gefunden.</div>";
+          return;
+        }
+        for (const journey of journeys) {
+          const card = document.createElement("div");
+          card.className = "conn" + (journey.id === activeJourneyId ? " active" : "");
+          const badges = (journey.legs || []).map((leg) => {
+            const line = leg.line || (leg.mode === "walking" ? "Fussweg" : "Verbindung");
+            return '<span class="line-badge ' + modeClass(leg.mode) + '">' + line + "</span>";
+          }).join("");
+          const discountHtml = journey.priceComparison?.hasDiscount
+            ? '<div class="discount">Verguenstigt: ' + euro(journey.priceComparison.discounted) + ' statt ' + euro(journey.priceComparison.base) + ' (Ersparnis ' + euro({amount: journey.priceComparison.savings, currency: journey.priceComparison.base.currency}) + ')</div>'
+            : "";
+          const splitPoints = (journey.splitTicketing?.splitPoints || []).join(" | ");
+          const splitHtml = journey.splitTicketing?.used
+            ? '<div class="split"><strong>Split-Ticketing:</strong> ' + (journey.splitTicketing.note || "") + (splitPoints ? '<br/>Split-Punkte: ' + splitPoints : "") + "</div>"
+            : "";
+          const details = (journey.legs || []).map((leg) =>
+            "<div style='margin:6px 0'><strong>" + (leg.line || (leg.mode === "walking" ? "Fussweg" : "Verbindung")) +
+            "</strong> · " + (leg.from?.name || "Start") + " → " + (leg.to?.name || "Ziel") +
+            "<br/>" + fmt(leg.departure) + " - " + fmt(leg.arrival) +
+            (leg.departurePlatform ? " · Gleis " + leg.departurePlatform : "") +
+            (leg.transferMinutesToNext != null ? "<br/><small>Umstieg: " + leg.transferMinutesToNext + " min</small>" : "") +
+            "</div>"
+          ).join("");
+
+          card.innerHTML =
+            '<div class="conn-row"><div class="times"><strong>' + fmt(journey.departure) + '</strong> → <strong>' + fmt(journey.arrival) +
+            '</strong></div><div class="price">' + euro(journey.priceComparison?.discounted || journey.price) + "</div></div>" +
+            '<div class="line-badges">' + badges + "</div>" + discountHtml + splitHtml + '<div class="details">' + details + "</div>";
+          card.addEventListener("click", () => {
+            activeJourneyId = journey.id;
+            renderCards();
+            drawJourney(journey);
+          });
+          connectionsEl.appendChild(card);
+        }
+      };
+
+      const renderSuggestions = (box, items, onPick) => {
+        box.innerHTML = "";
+        if (!items.length) return closeSuggestions(box);
+        for (const item of items) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "suggestion-item";
+          btn.textContent = item.name || item.id || "";
+          btn.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+            onPick(item);
+            closeSuggestions(box);
+          });
+          box.appendChild(btn);
+        }
+        box.classList.add("show");
+      };
+
+      const wireSuggest = (inputEl, boxEl, key) => {
+        let timer;
+        inputEl.addEventListener("input", () => {
+          selectedStationIds[key] = null;
+          clearTimeout(timer);
+          const query = inputEl.value.trim();
+          if (query.length < 2) return closeSuggestions(boxEl);
+          timer = setTimeout(async () => {
+            try {
+              const response = await fetch(apiUrl("/api/v1/locations/suggest?provider=" + encodeURIComponent(providerEl.value) + "&query=" + encodeURIComponent(query) + "&maxLocations=8"));
+              const data = await response.json();
+              const items = Array.isArray(data.items) ? data.items : [];
+              stationMaps[key] = new Map();
+              for (const item of items) {
+                if (item?.name && item?.id) stationMaps[key].set(item.name, item.id);
+              }
+              renderSuggestions(boxEl, items, (picked) => {
+                inputEl.value = picked.name || picked.id || inputEl.value;
+                if (picked?.id) selectedStationIds[key] = picked.id;
+              });
+            } catch {
+              closeSuggestions(boxEl);
+            }
+          }, 180);
+        });
+        inputEl.addEventListener("blur", () => setTimeout(() => closeSuggestions(boxEl), 120));
+      };
+
+      const loadProviders = async () => {
+        const response = await fetch(apiUrl("/api/v1/providers"));
+        const data = await response.json();
+        providerEl.innerHTML = "";
+        providersByKey = {};
+        for (const provider of data.items || []) {
+          providersByKey[provider.key] = provider;
+          const option = document.createElement("option");
+          option.value = provider.key;
+          option.textContent = provider.name + " (" + provider.key + ")";
+          providerEl.appendChild(option);
+        }
+        providerEl.value = data.defaultProvider || "db";
+        setDeutschlandticketAvailability();
+      };
+
+      providerEl.addEventListener("change", () => {
+        setDeutschlandticketAvailability();
+      });
+
+      formEl.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        hintEl.textContent = "Suche...";
+        connectionsEl.innerHTML = "";
+        try {
+          const fromValue = fromEl.value.trim();
+          const toValue = toEl.value.trim();
+          if (!fromValue || !toValue) throw new Error("Bitte Start und Ziel eingeben.");
+
+          const body = {
+            provider: providerEl.value,
+            faresProfile: {
+              deutschlandTicket: deutschlandTicketEl.checked,
+              deutschlandTicketOnly: deutschlandTicketOnlyEl.checked,
+              bahnCard: bahnCardEl.value,
+              travellerCount: Number(travellerCountEl.value || 1),
+              travellerAges: travellerAgesEl.value.trim(),
+            },
+          };
+          const fromId = selectedStationIds.from || stationMaps.from.get(fromValue) || null;
+          const toId = selectedStationIds.to || stationMaps.to.get(toValue) || null;
+          if (fromId) body.fromId = fromId; else body.from = fromValue;
+          if (toId) body.toId = toId; else body.to = toValue;
+          const departureIso = toIso(departureEl.value);
+          if (departureIso) body.departureTime = departureIso;
+
+          const response = await fetch(apiUrl("/api/v1/planner/query"), {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.details || data.error || "Planner-Request fehlgeschlagen");
+
+          journeys = Array.isArray(data.journeys) ? data.journeys : [];
+          activeJourneyId = journeys[0]?.id || null;
+          renderCards();
+          drawJourney(journeys[0] || null);
+          const first = journeys[0];
+          metaEl.textContent = first
+            ? "Verbindungen: " + journeys.length + " · Erste Abfahrt: " + fmt(first.departure) + " · Erste Ankunft: " + fmt(first.arrival)
+            : "Keine passende Verbindung gefunden.";
+          noteEl.innerHTML =
+            "<strong>BetterBahn</strong><br/>" +
+            "GitHub: <a href='" + data.betterbahn.github + "' target='_blank' rel='noreferrer'>Repo</a><br/>" +
+            "Route: <a href='" + data.betterbahn.routeUrl + "' target='_blank' rel='noreferrer'>mit Parametern oeffnen</a><br/>" +
+            "<span style='color:#9ca3af'>" + data.betterbahn.note + "</span>";
+          hintEl.textContent = "Fertig.";
+        } catch (error) {
+          hintEl.textContent = "Fehler: " + (error.message || String(error));
+          drawJourney(null);
+        }
+      });
+
+      apiBaseUrlEl.value = window.location.origin;
+      wireSuggest(fromEl, fromSuggestionsEl, "from");
+      wireSuggest(toEl, toSuggestionsEl, "to");
+      loadProviders().catch((error) => {
+        hintEl.textContent = "Provider konnten nicht geladen werden: " + error.message;
+      });
+    </script>
+  </body>
+  </html>

@@ -1,22 +1,20 @@
 # public-transport-enabler-planner-ui
 
-Separate Weboberfläche für die `public-transport-enabler-web-api`.
+A separate web UI for `public-transport-enabler-web-api`.
 
 ## Start
 
-Einfach `index.html` im Browser öffnen oder statisch hosten.
+Open `index.html` in a browser or host it as a static site.
 
 ## Features
 
-- OSM-Karte mit Routenverlauf
-- Live-Station-Suche mit Vorschlägen
-- Kompakte Verbindungskarten, Details erst nach Klick
-- Preisvergleich inkl. Rabattprofil aus API
-- Split-Ticketing-Hinweis und Split-Punkte (wenn vorhanden)
-- Deutschlandticket-Optionen nur bei unterstütztem Provider aktiv
+- OSM map with route visualization
+- Live station suggestions for start/destination inputs
+- Compact connection cards, full details on click
+- Fare comparison with tariff profile support
+- Split-ticketing hints and split points (when available)
+- Deutschlandticket controls enabled only for supported providers
 
-## API-Anbindung
+## API connection
 
-Oben im Feld **API Base URL** die laufende API eintragen, z. B.:
-
-`http://159.89.107.127:8080`
+Set your running API endpoint in the **API Base URL** field.

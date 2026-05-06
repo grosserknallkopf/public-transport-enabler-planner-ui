@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -64,51 +64,51 @@
   <body>
     <div class="app">
       <section class="panel">
-        <h1>Routenplaner UI</h1>
-        <p class="sub">Separate Oberfläche für die public-transport-enabler Web API.</p>
+        <h1>Route Planner UI</h1>
+        <p class="sub">Standalone UI for the public-transport-enabler Web API.</p>
         <form id="planner-form">
           <label>API Base URL
-            <input id="apiBaseUrl" placeholder="z.B. http://159.89.107.127:8080" />
+            <input id="apiBaseUrl" placeholder="e.g. http://159.89.107.127:8080" />
           </label>
           <label>Provider
             <select id="provider"></select>
           </label>
-          <label>Start
+          <label>From
             <div class="input-wrap">
-              <input id="from" autocomplete="off" placeholder="z.B. Berlin Hbf" required />
+              <input id="from" autocomplete="off" placeholder="e.g. Berlin Hbf" required />
               <div id="fromSuggestions" class="suggestions"></div>
             </div>
           </label>
-          <label>Ziel
+          <label>To
             <div class="input-wrap">
-              <input id="to" autocomplete="off" placeholder="z.B. Hamburg Hbf" required />
+              <input id="to" autocomplete="off" placeholder="e.g. Hamburg Hbf" required />
               <div id="toSuggestions" class="suggestions"></div>
             </div>
           </label>
-          <label>Abfahrt (optional)
+          <label>Departure (optional)
             <input id="departureTime" type="datetime-local" />
           </label>
           <div class="settings">
-            <div class="settings-title">Tarifprofil</div>
+            <div class="settings-title">Fare profile</div>
             <label class="row-inline"><input id="deutschlandTicket" type="checkbox" style="width:auto" />Deutschlandticket</label>
-            <label class="row-inline"><input id="deutschlandTicketOnly" type="checkbox" style="width:auto" />Nur D-Ticket-Verbindungen</label>
+            <label class="row-inline"><input id="deutschlandTicketOnly" type="checkbox" style="width:auto" />Deutschlandticket-only routes</label>
             <label>BahnCard
               <select id="bahnCard">
-                <option value="none">Keine</option>
+                <option value="none">None</option>
                 <option value="25">BahnCard 25</option>
                 <option value="50">BahnCard 50</option>
                 <option value="100">BahnCard 100</option>
               </select>
             </label>
-            <label>Mitreisende (max. 8)
+            <label>Travellers (max 8)
               <input id="travellerCount" type="number" min="1" max="8" value="1" />
             </label>
-            <label>Alter je Person (Komma getrennt)
-              <input id="travellerAges" placeholder="z.B. 30,28" />
+            <label>Age per traveller (comma-separated)
+              <input id="travellerAges" placeholder="e.g. 30,28" />
             </label>
             <div class="small" id="dticketHint"></div>
           </div>
-          <button type="submit">Verbindungen suchen</button>
+          <button type="submit">Search routes</button>
           <div class="hint" id="hint"></div>
         </form>
         <div class="small" id="meta"></div>
@@ -154,12 +154,19 @@
 
       const getApiBase = () => {
         const raw = apiBaseUrlEl.value.trim();
-        return raw ? raw.replace(/\/+$/, "") : window.location.origin;
+        if (raw) {
+          const parsed = new URL(raw);
+          return parsed.origin;
+        }
+        if (window.location.protocol.startsWith("http")) {
+          return `${window.location.protocol}//${window.location.hostname}:8080`;
+        }
+        throw new Error("Please enter a valid API Base URL.");
       };
       const apiUrl = (path) => getApiBase() + path;
 
       const euro = (price) => {
-        if (!price || typeof price.amount !== "number") return "Preis n/v";
+        if (!price || typeof price.amount !== "number") return "Price n/a";
         return new Intl.NumberFormat("de-DE", { style: "currency", currency: price.currency || "EUR" }).format(price.amount);
       };
       const fmt = (iso) => {
@@ -190,7 +197,7 @@
         if (!enabled) {
           deutschlandTicketEl.checked = false;
           deutschlandTicketOnlyEl.checked = false;
-          dticketHintEl.textContent = "Deutschlandticket nur bei deutschen Providern (DB) aktiv.";
+          dticketHintEl.textContent = "Deutschlandticket is only supported for DB.";
         } else {
           dticketHintEl.textContent = "";
         }
@@ -201,10 +208,10 @@
         routeLayer.clearLayers();
         if (!journey) return;
         if (journey.from?.latitude && journey.from?.longitude) {
-          L.marker([journey.from.latitude, journey.from.longitude]).addTo(markersLayer).bindPopup("Start: " + (journey.from.name || ""));
+          L.marker([journey.from.latitude, journey.from.longitude]).addTo(markersLayer).bindPopup("From: " + (journey.from.name || ""));
         }
         if (journey.to?.latitude && journey.to?.longitude) {
-          L.marker([journey.to.latitude, journey.to.longitude]).addTo(markersLayer).bindPopup("Ziel: " + (journey.to.name || ""));
+          L.marker([journey.to.latitude, journey.to.longitude]).addTo(markersLayer).bindPopup("To: " + (journey.to.name || ""));
         }
         const coords = Array.isArray(journey.routeCoordinates) ? journey.routeCoordinates : [];
         if (coords.length > 1) {
@@ -216,29 +223,29 @@
       const renderCards = () => {
         connectionsEl.innerHTML = "";
         if (!journeys.length) {
-          connectionsEl.innerHTML = "<div class='small'>Keine Verbindungen gefunden.</div>";
+          connectionsEl.innerHTML = "<div class='small'>No routes found.</div>";
           return;
         }
         for (const journey of journeys) {
           const card = document.createElement("div");
           card.className = "conn" + (journey.id === activeJourneyId ? " active" : "");
           const badges = (journey.legs || []).map((leg) => {
-            const line = leg.line || (leg.mode === "walking" ? "Fussweg" : "Verbindung");
+            const line = leg.line || (leg.mode === "walking" ? "Walk" : "Connection");
             return '<span class="line-badge ' + modeClass(leg.mode) + '">' + line + "</span>";
           }).join("");
           const discountHtml = journey.priceComparison?.hasDiscount
-            ? '<div class="discount">Verguenstigt: ' + euro(journey.priceComparison.discounted) + ' statt ' + euro(journey.priceComparison.base) + ' (Ersparnis ' + euro({amount: journey.priceComparison.savings, currency: journey.priceComparison.base.currency}) + ')</div>'
+            ? '<div class="discount">Discounted: ' + euro(journey.priceComparison.discounted) + ' instead of ' + euro(journey.priceComparison.base) + ' (Savings ' + euro({amount: journey.priceComparison.savings, currency: journey.priceComparison.base.currency}) + ')</div>'
             : "";
           const splitPoints = (journey.splitTicketing?.splitPoints || []).join(" | ");
           const splitHtml = journey.splitTicketing?.used
-            ? '<div class="split"><strong>Split-Ticketing:</strong> ' + (journey.splitTicketing.note || "") + (splitPoints ? '<br/>Split-Punkte: ' + splitPoints : "") + "</div>"
+            ? '<div class="split"><strong>Split ticketing:</strong> ' + (journey.splitTicketing.note || "") + (splitPoints ? '<br/>Split points: ' + splitPoints : "") + "</div>"
             : "";
           const details = (journey.legs || []).map((leg) =>
-            "<div style='margin:6px 0'><strong>" + (leg.line || (leg.mode === "walking" ? "Fussweg" : "Verbindung")) +
-            "</strong> · " + (leg.from?.name || "Start") + " → " + (leg.to?.name || "Ziel") +
+            "<div style='margin:6px 0'><strong>" + (leg.line || (leg.mode === "walking" ? "Walk" : "Connection")) +
+            "</strong> · " + (leg.from?.name || "From") + " → " + (leg.to?.name || "To") +
             "<br/>" + fmt(leg.departure) + " - " + fmt(leg.arrival) +
-            (leg.departurePlatform ? " · Gleis " + leg.departurePlatform : "") +
-            (leg.transferMinutesToNext != null ? "<br/><small>Umstieg: " + leg.transferMinutesToNext + " min</small>" : "") +
+            (leg.departurePlatform ? " · Platform " + leg.departurePlatform : "") +
+            (leg.transferMinutesToNext != null ? "<br/><small>Transfer: " + leg.transferMinutesToNext + " min</small>" : "") +
             "</div>"
           ).join("");
 
@@ -323,12 +330,12 @@
 
       formEl.addEventListener("submit", async (event) => {
         event.preventDefault();
-        hintEl.textContent = "Suche...";
+        hintEl.textContent = "Searching...";
         connectionsEl.innerHTML = "";
         try {
           const fromValue = fromEl.value.trim();
           const toValue = toEl.value.trim();
-          if (!fromValue || !toValue) throw new Error("Bitte Start und Ziel eingeben.");
+          if (!fromValue || !toValue) throw new Error("Please enter both from and to.");
 
           const body = {
             provider: providerEl.value,
@@ -353,7 +360,7 @@
             body: JSON.stringify(body),
           });
           const data = await response.json();
-          if (!response.ok) throw new Error(data.details || data.error || "Planner-Request fehlgeschlagen");
+          if (!response.ok) throw new Error(data.details || data.error || "Planner request failed");
 
           journeys = Array.isArray(data.journeys) ? data.journeys : [];
           activeJourneyId = journeys[0]?.id || null;
@@ -361,25 +368,25 @@
           drawJourney(journeys[0] || null);
           const first = journeys[0];
           metaEl.textContent = first
-            ? "Verbindungen: " + journeys.length + " · Erste Abfahrt: " + fmt(first.departure) + " · Erste Ankunft: " + fmt(first.arrival)
-            : "Keine passende Verbindung gefunden.";
+            ? "Routes: " + journeys.length + " · First departure: " + fmt(first.departure) + " · First arrival: " + fmt(first.arrival)
+            : "No matching route found.";
           noteEl.innerHTML =
             "<strong>BetterBahn</strong><br/>" +
             "GitHub: <a href='" + data.betterbahn.github + "' target='_blank' rel='noreferrer'>Repo</a><br/>" +
-            "Route: <a href='" + data.betterbahn.routeUrl + "' target='_blank' rel='noreferrer'>mit Parametern oeffnen</a><br/>" +
+            "Route: <a href='" + data.betterbahn.routeUrl + "' target='_blank' rel='noreferrer'>open with parameters</a><br/>" +
             "<span style='color:#9ca3af'>" + data.betterbahn.note + "</span>";
-          hintEl.textContent = "Fertig.";
+          hintEl.textContent = "Done.";
         } catch (error) {
-          hintEl.textContent = "Fehler: " + (error.message || String(error));
+          hintEl.textContent = "Error: " + (error.message || String(error));
           drawJourney(null);
         }
       });
 
-      apiBaseUrlEl.value = window.location.origin;
+      apiBaseUrlEl.value = `${window.location.protocol}//${window.location.hostname}:8080`;
       wireSuggest(fromEl, fromSuggestionsEl, "from");
       wireSuggest(toEl, toSuggestionsEl, "to");
       loadProviders().catch((error) => {
-        hintEl.textContent = "Provider konnten nicht geladen werden: " + error.message;
+        hintEl.textContent = "Could not load providers: " + error.message;
       });
     </script>
   </body>
